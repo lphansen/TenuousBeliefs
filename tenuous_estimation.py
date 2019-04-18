@@ -171,7 +171,7 @@ for k in range(n):
     et = y_lagged[k] - x[k].T@b_hat0[k] # Residuals
     dt.append(et @ et)
 
-iters = 100000 # Recommended iterations: 1,000,000
+iters = 1000000 # Recommended iterations: 1,000,000
 
 # Get the number of cores available for parallelization
 # NOTE: Since the process is being run on all cores, runtime is influenced by
