@@ -18,7 +18,7 @@ Navigate to the folder containing the code and run the `setup.sh` script by ente
 source setup.sh
 ```
 
-Press 'y' to proceed with installation when prompted. You will know that setup has been correctly implemented if the word `(tenuous)` contained in parenthesis appears on the current line of your terminal window.
+Press `y` to proceed with installation when prompted. You will know that setup has been correctly implemented if the word `(tenuous)` contained in parenthesis appears on the current line of your terminal window.
 
 ## Running the estimation
 
