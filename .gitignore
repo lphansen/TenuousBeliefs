@@ -1,2 +1,5 @@
 # Ignore the image files created by the estimation code #
 *.png
+
+# Ignore the pycache created through importing functions #
+__pycache__/
