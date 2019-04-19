@@ -1,1 +1,2 @@
-
+# Ignore the image files created by the estimation code #
+*.png
