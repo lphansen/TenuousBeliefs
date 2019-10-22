@@ -578,61 +578,6 @@ class TenuousModel():
         self.ρ_list = sorted(ρs)
         self.models = {}
         
-        # if load == True:
-        #     if not os.path.isfile('tenuousmodel.pickle'):
-        #         for q0s in self.q0s_list:
-        #             for qus in self.qus_list:
-        #                 ρ_restricted = q0s ** 2 / norm(self.params['σz']) ** 2
-        #                 for ρ in self.ρ_list:
-        #                     print("q0s = {}; qus = {}; rho2 = {};".format(q0s, qus, ρ * ρ_restricted))
-        #                     if ρ == 1:
-        #                         self.models[q0s, qus, ρ] = SturcturedModel(self.params, q0s, qus)
-        #                         self.models[q0s, qus, ρ].ApproxBound()
-        #                         self.models[q0s, qus, ρ].solvetheta(None)
-        #                         self.models[q0s, qus, ρ].HL(calHL = True)
-        #                         self.models[q0s, qus, ρ].Drift()
-        #                         self.models[q0s, qus, ρ].ExpectH()
-
-        #                     else:
-        #                         # if (q0s % 0.05 == 0) and (qus % 0.1 == 0):
-        #                         self.models[q0s, qus, ρ] = SturcturedModel(self.params, q0s, qus, ρ * ρ_restricted)
-        #                         self.models[q0s, qus, ρ].ApproxBound()
-        #                         self.models[q0s, qus, ρ].solvetheta(None)
-        #                         self.models[q0s, qus, ρ].HL(calHL = True)
-        #                         self.models[q0s, qus, ρ].Drift()
-        #                         self.models[q0s, qus, ρ].ExpectH()
-
-        #                         # else:
-        #                         #     print('pass')
-        #                         #     pass
-                                                                    
-
-            
-        #         with open('tenuousmodel.pickle', "wb") as file_:
-        #             pickle.dump(self.models, file_, -1)
-
-        #     else:
-        #         self.models = pickle.load(open('tenuousmodel.pickle', "rb", -1))
-        # else:
-        #     for q0s in self.q0s_list:
-        #         for qus in self.qus_list:
-        #             ρ_restricted = q0s ** 2 / norm(self.params['σz']) ** 2
-        #             for ρ in self.ρ_list:
-        #                 print("q0s = {}; qus = {}; rho2 = {};".format(q0s, qus, ρ * ρ_restricted))
-        #                 if ρ == 1:
-        #                     self.models[q0s, qus, ρ] = SturcturedModel(self.params, q0s, qus)
-        #                     self.models[q0s, qus, ρ].ApproxBound()
-        #                     self.models[q0s, qus, ρ].solvetheta(None)
-        #                     self.models[q0s, qus, ρ].HL(calHL = True)
-        #                     self.models[q0s, qus, ρ].Drift()
-        #                     self.models[q0s, qus, ρ].ExpectH()
-
-        #                 self.models[q0s, qus, ρ] = SturcturedModel(self.params, q0s, qus, ρ * ρ_restricted)
-        #                 self.models[q0s, qus, ρ].ApproxBound()
-        #                 self.models[q0s, qus, ρ].solvetheta(None)
-        #                 self.models[q0s, qus, ρ].HL(calHL = True)
-        #                 self.models[q0s, qus, ρ].Drift()
-        #                 self.models[q0s, qus, ρ].ExpectH()
       
     def solve(self):
         for q0s in self.q0s_list:
@@ -1693,18 +1638,15 @@ if __name__ == "__main__":
     # print(np.linspace(0,0.2,11).tolist())
     # s = TenuousModel(params, np.linspace(0,0.1,11).tolist(), np.linspace(0, 0.2, 11).tolist(), [0.5, 1])
     # s.Figure2()
+
+
+
     p = Plottingmodule()
-    # p.driftIntPlot(q0s = 0.1)
-    # p.shocksIntPlot(q0s = 0.1)
-    # p.Figure2()
-    # p.DriftComparison()
+    p.driftIntPlot(q0s = 0.1)
+    p.shocksIntPlot(q0s = 0.1)
+    p.Figure2()
+    p.DriftComparison()
     p.Figure6()
     p.Figure7()
-    # p.dumpdata()
-    # s.driftIntPlot(0.1,0.2,1)
-    # print(s.models.keys())
-    # s.Figure2()
-    # s.DriftComparison(0.1, [0.5,1])
-    # s.Figure6()
-    # s.Figure7()
+    
     print('Time spent is {}'.format(datetime.datetime.now()- start_time))
