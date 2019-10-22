@@ -1,4 +1,4 @@
-# VAR Estimation
+# Macroeconomic Uncertainty Prices when Beliefs are Tenuous
 
 This repository contains code which estimates the empirical model in "Macroeconomic Uncertainty Prices when Beliefs are Tenuous" by [Lars Peter Hansen][id1] and [Thomas J Sargent][id2]. Appendix B and C from that paper outline the methodology employed in this software.
 
