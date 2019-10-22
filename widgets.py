@@ -1,6 +1,9 @@
 import ipywidgets as widgets
 from ipywidgets import FloatSlider, HBox, Button, Output, FloatText, VBox, BoundedFloatText
 from ipywidgets import Layout,Label,interactive_output, interactive
+from numpy.linalg import norm, det, inv
+import numpy as np
+from Tenuous import TenuousModel
 
 # Define global parameters for parameter checks
 params_pass = False
