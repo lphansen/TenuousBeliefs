@@ -28,7 +28,6 @@ conda env create -f environment.yml
 conda activate tenuous
 ```
 
-
 Press `y` to proceed with installation when prompted. You will know that setup has been correctly implemented if the word `(tenuous)` contained in parenthesis appears on the current line of your terminal window.
 
 ## VAR Estimation
@@ -45,7 +44,9 @@ This code will print in terminal the estimated 10th, 50th, and 90th percentiles 
 
 ## Jupyter Notebook for Interactive Plots in the Paper
 
-Open the notebook named "PaperResultIllustrationipynb" and follow the instructions in the notebook. The notebook generates the some interactive plots for assisting users better understanding the paper. 
+Acitivate our virtual python environment "tenuous" and navigate to this folder.
+
+Then open the notebook named "PaperResultIllustrationipynb" and follow the instructions in the notebook. The notebook generates the some interactive plots for assisting users better understanding the paper. 
 
 ## Authors
 
