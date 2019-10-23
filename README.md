@@ -44,7 +44,10 @@ This code will print in terminal the estimated 10th, 50th, and 90th percentiles 
 
 ## Jupyter Notebook for Interactive Plots in the Paper
 
-Acitivate our virtual python environment "tenuous" and navigate to this folder.
+Acitivate our virtual python environment "tenuous" and navigate to this folder. Then run the following command to open jupyter notebook:
+```
+jupyter notebook
+```
 
 Then open the notebook named "PaperResultIllustrationipynb" and follow the instructions in the notebook. The notebook generates the some interactive plots for assisting users better understanding the paper. 
 
