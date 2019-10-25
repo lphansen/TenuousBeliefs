@@ -33,6 +33,7 @@ conda env create -f environment.yml
 conda activate tenuous
 ```
 Please replace /path to user designated folder path in both cases.
+
 Press `y` to proceed with installation when prompted. You will know that setup has been correctly implemented if the word `(tenuous)` contained in parenthesis appears on the current line of your terminal window.
 
 ## VAR Estimation
