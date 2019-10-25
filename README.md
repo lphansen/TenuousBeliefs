@@ -57,6 +57,10 @@ jupyter notebook
 
 Then open the notebook named "PaperResultIllustrationipynb" and follow the instructions in the notebook. The notebook generates the some interactive plots for assisting users better understanding the paper. 
 
+<a href="https://colab.research.google.com/github/lphansen/TenuousBeliefs/blob/master/PaperResultIllustration.ipynb">
+  <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/>
+</a>
+
 ## Uninstalling
 
 Delete the files and open Terminal/Command Prompt and run
