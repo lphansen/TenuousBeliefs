@@ -9,6 +9,8 @@ This repository contains code which estimates the empirical model in "Macroecono
 
 To copy the code to your machine, you may either download it from the Github website directly or you may clone the repository in read-only mode.
 
+To access our jupyter notebook online, please view [Notebook](#jupyter-notebook-for-interactive-plots-in-the-paper) section.
+
 ### Prerequisites
 
 This project simply requires the Anaconda distribution of Python version 3.x. Additional dependencies and prerequisites are handled automatically in setup.
