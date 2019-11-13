@@ -55,12 +55,12 @@ To run the notebook, simply use: (Makse sure acitivating our virtual python envi
 jupyter notebook
 ```
 
-Then open the notebook named "PaperResultIllustrationipynb" and follow the instructions in the notebook. The notebook generates the some interactive plots for assisting users better understanding the paper. 
+Then open the notebook named "__PaperResultIllustrationipynb__" and follow the instructions in the notebook. The notebook generates the some interactive plots for assisting users better understanding the paper. 
 
-Interactive Notebook using Binder:
+We recommend users to use Binder to interact with our notebook without downloading it, click the link below to play with our notebook:
 [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/lphansen/tenuousbeliefs/master)
 
-Interactive Notebook using Google Colab:
+We also have interactive Notebook using Google Colab:
 <a href="https://colab.research.google.com/github/lphansen/TenuousBeliefs/blob/master/PaperResultIllustration.ipynb">
   <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/>
 </a>
@@ -76,6 +76,7 @@ conda env remove -n tenuous
 
 * **John Wilson** - *johnrwilson@uchicago.edu*
 * **Jiaming Wang** - *jiamingwang@uchicago.edu*
+
 Please feel free to contact us for any types of questions
 
 ## Acknowledgments
