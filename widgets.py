@@ -41,11 +41,11 @@ sigk2 = FloatText(min=0, max=0.5, step=0.001, value=0, description=r"$\sigma_{k2
 sigz1 = FloatText(min=0, max=0.05, step=0.001, value=0.011, description=r"$\sigma_{z1}$", style=style_med,layout = Layout(width='70%'))
 sigz2 = FloatText(min=0, max=0.05, step=0.001, value=0.025, description=r"$\sigma_{z2}$", style=style_med,layout = Layout(width='70%'))
 
-αŷ =  FloatText(min=0, max=0.5, step=0.001, value=0.484, description=r'${\widehat \alpha}_k $', style=style_med,layout = Layout(width='70%'))
-αẑ̂ =  FloatText(min=0, max=0, step=0.001, value=0, description=r'${\widehat \alpha}_z $', style=style_med,layout = Layout(width='70%'))
+αk̂ =  FloatText(min=0, max=0.5, step=0.001, value=0.484, description=r'${\widehat \alpha}_k $', style=style_med,layout = Layout(width='70%'))
+αẑ =  FloatText(min=0, max=0, step=0.001, value=0, description=r'${\widehat \alpha}_z $', style=style_med,layout = Layout(width='70%'))
 
-β̂ = FloatText(min=0, max=1, step=0.01, value=1, description=r'${\widehat \beta}_k $', style=style_med,layout = Layout(width='70%')) # >0 <1
-κ̂ = FloatText(min=0, max=0.3, step=0.01, value=0.014, description=r'${\widehat \beta}_z $', style=style_med,layout = Layout(width='70%'))
+βk = FloatText(min=0, max=1, step=0.01, value=1, description=r'${\widehat \beta}_k $', style=style_med,layout = Layout(width='70%')) # >0 <1
+βz = FloatText(min=0, max=0.3, step=0.01, value=0.014, description=r'${\widehat \beta}_z $', style=style_med,layout = Layout(width='70%'))
 
 box_layout       = Layout(width='100%', flex_flow = 'row')#, justify_content='space-between')
 box_layout_wide  = Layout(width='100%', justify_content='space-between')
@@ -59,8 +59,8 @@ sigz_box = VBox([widgets.Label(value=r"$\sigma_{z}$"), sigz_box1])
 
 sigmas_box = VBox([sigk_box, sigz_box], layout = Layout(width='100%'))
 
-Zbox = VBox([widgets.Label(value="Baseline Model Dynamics"), κ̂ , αẑ̂, sigz_box], layout = Layout(width='90%'))
-Kbox = VBox([widgets.Label(value="Capital Dynamics"), β̂ , αŷ, sigk_box], layout = Layout(width='90%'))
+Zbox = VBox([widgets.Label(value="Baseline Model Dynamics"), βz , αẑ, sigz_box], layout = Layout(width='90%'))
+Kbox = VBox([widgets.Label(value="Capital Dynamics"), βk , αk̂, sigk_box], layout = Layout(width='90%'))
 
 entropybox = VBox([widgets.Label(value="Entropy Parameters"), qₒₛ, qu], layout = Layout(width='90%'))
 rhobox = VBox([widgets.Label(value="Generator Function Parameters"), RestrictedRho, ρ2, ρ1], layout = Layout(width='90%'))
@@ -68,8 +68,8 @@ rhobox = VBox([widgets.Label(value="Generator Function Parameters"), RestrictedR
 line1 = HBox([Zbox, Kbox], layout = box_layout)
 line2 = HBox([entropybox, rhobox], layout = box_layout)
 
-# left_box = VBox([Label('Capital Dynamics'), σy1, σy2, αŷ, κ̂])
-# middle_box = VBox([Label('Baseline Model Dynamics'), σz1, σz2, αẑ̂ , β̂])
+# left_box = VBox([Label('Capital Dynamics'), σy1, σy2, αk̂, βz])
+# middle_box = VBox([Label('Baseline Model Dynamics'), σz1, σz2, αẑ , βk])
 # right_box = VBox([Label('Entropy and other Parameters'), qₒₛ, qᵤₛ, ρ2, ρ1, δ])
 # ui = HBox([left_box, middle_box, right_box])
 button_update = Button(description = "Update Parameters")
@@ -89,10 +89,10 @@ def updateparams(b):
     global usermodel
     userparams['q'] = 0.05
 
-    userparams['αk'] = αŷ.value #0.386
-    userparams['αz'] = αẑ̂.value
-    userparams['βk'] = β̂.value
-    userparams['βz'] = κ̂.value 
+    userparams['αk'] = αk̂.value #0.386
+    userparams['αz'] = αẑ.value
+    userparams['βk'] = βk.value
+    userparams['βz'] = βz.value 
     userparams['σy'] = np.array([[sigk1.value], [sigk2.value]])
     userparams['σz'] = np.array([[sigz1.value], [sigz2.value]])
     userparams['δ'] = 0.002

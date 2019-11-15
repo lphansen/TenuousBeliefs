@@ -20,37 +20,35 @@ from scipy.sparse.linalg import spsolve
 import copy
 import datetime
 
-
-# To-dos:
-# 1. drift comparison for arbitrary qus
-
-
+# Set default parameter values
 params = {}
-params['q'] = 0.05
+params['q'] = 0.05    # correspond to q0s in the paper
 
-params['αk'] = 0.484  #0.386
-params['αz'] = 0
-params['βk'] = 1
-params['βz'] = 0.014
-params['σy'] = np.array([[0.477], [0]])
-params['σz'] = np.array([[0.011], [0.025]])
-params['δ'] = 0.002
+params['αk'] = 0.484  # correspond to αk_hat
+params['αz'] = 0      # correspond to αz_hat
+params['βk'] = 1      # correspond to βk_hat
+params['βz'] = 0.014  # correspond to βz_hat
+params['σk'] = np.array([[0.477], [0]])        # volatility for capital process k
+params['σz'] = np.array([[0.011], [0.025]])    # volatility for risk state z
+params['δ'] = 0.002   # Subjective discount rate
 
-params['ρ1'] = 0
-
+# parameters for Quadratic function of z, which is used to match q
+params['ρ1'] = 0      
 params['ρ2'] = params['q'] ** 2 / norm(params['σz']) ** 2
 params['z̄'] = params['αz'] / params['βz']
-params['σ'] = np.vstack([params['σy'].T, params['σz'].T ]) 
+params['σ'] = np.vstack([params['σk'].T, params['σz'].T ]) 
 params['a'] = norm(params['σz']) ** 2 /  det(params['σ'] ) ** 2
-params['b'] = - np.squeeze(params['σy'].T.dot(params['σz'])) /  det(params['σ'] ) ** 2
-params['d'] = norm(params['σy']) ** 2 /  det(params['σ'] ) ** 2
+params['b'] = - np.squeeze(params['σk'].T.dot(params['σz'])) /  det(params['σ'] ) ** 2
+params['d'] = norm(params['σk']) ** 2 /  det(params['σ'] ) ** 2
 
 params['zl'] = -2.5
 params['zr'] = 2.5
 # print(params)
 ρ2_default = params['ρ2']
 
+
 def FeynmanKac(μz, σz, zgrid, fintl, T, Dt):
+    # solving Feyman Kac Equation forwardly, return solution for Feyman Kac equation given the grids specification
     Dz = zgrid[1] - zgrid[0]
     Nz = len(zgrid)
     row = []
@@ -95,6 +93,7 @@ def FeynmanKac(μz, σz, zgrid, fintl, T, Dt):
     return sol
 
 def InterpQuantile(zgrid, mgrid, z0):
+    # interpolating mgrid through zgrid at cdf(Z = z0)
     dim = mgrid.shape
     res = []
     for t in range(dim[1]):
@@ -102,20 +101,20 @@ def InterpQuantile(zgrid, mgrid, z0):
         res.append(f(z0))
     return np.array(res)
 
-class SturcturedModel():
-
+class StructuredModel(): 
+    
     def __init__(self, params, q0s, qᵤₛ, ρ2 = None):
+        # Constructor for StructuredModel Class; User could feed in q0s, qus, ρ2 and other parameters(through dictionary)
         self.θ = None
-        self.αŷ = params['αŷ']
-        self.αẑ = params['αẑ']
-        self.β̂  = params['β̂']
-        self.κ̂  = params['κ̂']
-        self.σy = params['σy']
+        # this is model parameter values. Notations are the same as defining default parameter dictionary
+        self.αk = params['αk']
+        self.αz = params['αz']
+        self.βk = params['βk']
+        self.βz  = params['βz']
+        self.σk = params['σk']
         self.σz = params['σz']
         self.δ = params['δ']
         self.ρ1 = params['ρ1']
-
-        # Parameters that could alter
         self.z̄ = params['z̄']
         self.σ = params['σ']
         self.a = params['a']
@@ -140,29 +139,30 @@ class SturcturedModel():
         self.s1 = None
         self.s2 = None
 
-        self.status = 0  # 0: Not solved; 1: solved
-        self.dvErr = None
-        self.qErr = None
-        self.dv0 = None
-        self.hl = None
-        self.v = None
+        self.status = 0      # 0: Not solved; 1: solved
+        self.dvErr = None    # Track error of "solved" model's difference in matching v'(0)
+        self.qErr = None     # Track error of "solved" model's difference in q
+        self.dv0 = None      # v'(0)
+        self.hl = None       # half life of Chernoff Entropy of the drift
+        self.v = None        # storing the pde solutions and drift distortions
         self.Distorted = None
 
-
-    def HJBODE(self, z, v, θ):
+    def __HJBODE(self, z, v, θ):
+            # Setting up HJB ODE function for given θ value; v is a vector storing function value and derivatives; v is a function of z
+            # Aim to format ODE in a way that we can call solve_bvp solver to solve this ODE
         v0 = v[0]
         v1 = v[1]
         if isinstance(v1, (int, float, np.float)):
-            (min_val, _) = self.mined(z, v1)
-    #         print(min_val)
+            (min_val, _) = self.__mined(z, v1)
+        #         print(min_val)
             temp = np.array([0.01, v1]).dot(self.σ).dot(self.σ.T).dot(np.array([[0.01],[v1]]))
-    #         print("z: {}; v1: {}; min_val: {}".format(z, v1, min_val))
-    #         print("min_val: {}; dot prod: {}; v0: {}".format(min_val, temp, v0))
+        #         print("z: {}; v1: {}; min_val: {}".format(z, v1, min_val))
+        #         print("min_val: {}; dot prod: {}; v0: {}".format(min_val, temp, v0))
             return np.vstack((v1,
                             2 / norm(self.σz) ** 2 * (self.δ * v0 - min_val + 1 / (2 * θ) *  temp )))
             
         else:
-            min_val = self.mined(z, v1)
+            min_val = self.__mined(z, v1)
             temp = np.zeros(len(v1))
             for i in range(len(v1)):
         #         print(np.array([[0.01],[v1[i]]]))
@@ -172,10 +172,10 @@ class SturcturedModel():
             return np.vstack((v1,
                             2 / norm(self.σz) ** 2 * (self.δ * v0 - min_val + 1 / (2 * θ) *  temp )))
 
-    def mined(self, z, dv):
-        
+    def __mined(self, z, dv):
+        # this function aims to solve the analytical minimum (maximum in the paper, here we change its sign and solve minimum) of the HJB ODE related to i as the objective is seperable in i and s
         A = 0.5 * self.a
-        C0 = (self.ρ1 + self.ρ2 * (z - self.z̄)) * (self.αẑ - self.κ̂ * (z - self.z̄)) + norm(self.σz) ** 2 / 2 * self.ρ2 - self.q0s ** 2 / 2
+        C0 = (self.ρ1 + self.ρ2 * (z - self.z̄)) * (self.αz - self.βz * (z - self.z̄)) + norm(self.σz) ** 2 / 2 * self.ρ2 - self.q0s ** 2 / 2
         C1 = (self.ρ1 + self.ρ2 * (z - self.z̄))
         C2 = 0.5 * self.d
         D = self.b ** 2 / (2 * A) - 2 * C2
@@ -188,8 +188,8 @@ class SturcturedModel():
         s21 = ( -BB + np.sqrt(BB ** 2 - 4 * AA * CC)) / (2 * AA)
         s22 = ( -BB - np.sqrt(BB ** 2 - 4 * AA * CC)) / (2 * AA)
         
-        mined1 = np.squeeze(0.01 * (self.αŷ + self.β̂ * (z-self.z̄) + self.S1(s21, z)) + dv * (self.αẑ - self.κ̂ * (z - self.z̄) + s21))
-        mined2 = np.squeeze(0.01 * (self.αŷ + self.β̂ * (z-self.z̄) + self.S1(s22, z)) + dv * (self.αẑ - self.κ̂ * (z - self.z̄) + s22))
+        mined1 = np.squeeze(0.01 * (self.αk + self.βk* (z-self.z̄) + self.__S1(s21, z)) + dv * (self.αz - self.βz * (z - self.z̄) + s21))
+        mined2 = np.squeeze(0.01 * (self.αk + self.βk* (z-self.z̄) + self.__S1(s22, z)) + dv * (self.αz - self.βz * (z - self.z̄) + s22))
         
         if isinstance(mined1, (int, float, np.float)):
             res = min(mined1, mined2)
@@ -198,28 +198,29 @@ class SturcturedModel():
             res = np.min(np.vstack([mined1,mined2]), axis = 0)
             return res
 
-    def S1(self, s2, z):
+    def __S1(self, s2, z):
     
         A = 0.5 * self.a
         B = self.b * s2
-        C = 0.5 * self.d * s2 ** 2 + (self.ρ1 + self.ρ2 * (z - self.z̄)) * s2 + (self.ρ1 + self.ρ2 * (z - self.z̄)) * (self.αẑ - self.κ̂ * (z - self.z̄)) + norm(self.σz) ** 2 / 2 * self.ρ2 - self.q0s ** 2 / 2
+        C = 0.5 * self.d * s2 ** 2 + (self.ρ1 + self.ρ2 * (z - self.z̄)) * s2 + (self.ρ1 + self.ρ2 * (z - self.z̄)) * (self.αz - self.βz * (z - self.z̄)) + norm(self.σz) ** 2 / 2 * self.ρ2 - self.q0s ** 2 / 2
         
         return (-B - np.sqrt(B ** 2 - 4 * A * C)) / (2 * A)
 
     def ApproxBound(self):
-    
+        # This function aims to solve the boundary for our ODE, details please check appendix E
         ν, s1, s2 = sympy.symbols('ν s1 s2')
-        f1 = (-self.δ - self.κ̂ + s2) * ν + 0.01 * (self.β̂ + s1)
+        f1 = (-self.δ - self.βz + s2) * ν + 0.01 * (self.βk+ s1)
         f2 = ν * (self.a * s1 + self.b * s2) - 0.01 * (self.b * s1 + self.d * s2 + self.ρ2)
-        f3 = 0.5 * (self.a * s1 ** 2 + 2 * self.b * s1 * s2 + self.d * s2 ** 2) + self.ρ2 * (-self.κ̂ + s2 )
+        f3 = 0.5 * (self.a * s1 ** 2 + 2 * self.b * s1 * s2 + self.d * s2 ** 2) + self.ρ2 * (-self.βz + s2 )
         # initialGuess = (np.array([0.2, 0.8]), np.array([-0.1, 0.1]), np.array([0, 0]))
         bounds =  np.array(sympy.solvers.solve((f1, f2, f3), (ν, s1, s2))).astype(float)
         self.dvl = max(bounds[:,0])
         self.dvr = min(bounds[:,0])
     
-    def ODEsolver(self, zrange, bdl, bdr, θ):
+    def __ODEsolver(self, zrange, bdl, bdr, θ):
+        # This function aims to specify ODE in Python given θ and boundary values and returns corresponding ODE solutions
         def tosolve(z, v):
-            return self.HJBODE(z, v, θ)
+            return self.__HJBODE(z, v, θ)
         
         def bc(ya, yb):
             return np.array([ya[1] - bdl, yb[1] - bdr])
@@ -234,22 +235,27 @@ class SturcturedModel():
         res = solve_bvp(tosolve, bc, x, y)
         return res
         
-    def MatchODE(self, θ, dv0guess = None):
+    def __MatchODE(self, θ, dv0guess = None):
+        # We solv ODE in [0, inf] and [-inf, 0] seperately. This function tries to find a θ that match v0 at 0 for the two parts of ODE. See Appendix C for details
+
         res = {}
         
         def v0Diff(dv0):
-    #         print(type(dv0))
-    #         if type(dv0) is list or np.ndarray:
-    #             dv0 = dv0[0]
+            # Given dv0, solves the ODE with boundary condition v'(0) = dv0
+            # return the difference in v(0)+ and v(0)- 
+
+
             # print('trying dv(0) = {}'.format(dv0))
-            negsol = self.ODEsolver([self.zl, 0], self.dvl, dv0, θ)
+            negsol = self.__ODEsolver([self.zl, 0], self.dvl, dv0, θ)
             # print('For this case, v(0-) = {}'.format(negsol['y'][0,-1]))
-            possol = self.ODEsolver([0, self.zr], dv0, self.dvr, θ)
+            possol = self.__ODEsolver([0, self.zr], dv0, self.dvr, θ)
             # print('For this case, v(0+) = {}'.format(possol['y'][0, 0]))
 
             diff = negsol['y'][0, -1] - possol['y'][0, 0]
             # print('The difference is: {}'.format(diff))
             return diff
+
+        # running grid searches for better initial guesses for dv0
         if dv0guess is None:
             dv0_lists = np.linspace(self.dvr + 0.2 * (self.dvl - self.dvr), self.dvl - 0.2 * (self.dvl - self.dvr), 5)
             gridsvalue = []
@@ -260,25 +266,23 @@ class SturcturedModel():
             dv0guess = dv0_lists[minIdx]
             # print('Grids: {}; Values: {}'.format(dv0_lists, gridsvalue))
 
-
+        # solve for a value of v'(0) that match the ODE solutions for two parts (-inf, 0) and (0, inf)
+        # V0Diff needs to be 0 as the solution needs to be continous
         dv0 = np.squeeze(fsolve(v0Diff, dv0guess))
-    #     return np.squeeze(fsolve(v0Diff, dv0guess))
 
         # print('-----------------------')
         # print('dv matched at {} with Error {}'.format(dv0, v0Diff(dv0)))
         
-        negsol = self.ODEsolver([self.zl, 0], self.dvl, dv0, θ)
+        negsol = self.__ODEsolver([self.zl, 0], self.dvl, dv0, θ)
         v0 = negsol.y[0,-1]
         v1 = negsol.y[1,-1]
-    #     print(type(v1))
-        (min_val,_) = self.mined(-1e-6, v1)
+        (min_val,_) = self.__mined(-1e-6, v1)
         v2 = 2 / norm(self.σz) ** 2 * (self.δ * v0 - min_val + 1 / (2 * θ) *  np.array([0.01, v1]).dot(self.σ).dot(self.σ.T).dot(np.array([[0.01],[v1]])))
         # print("For θ = {}, v(0-) = {}; v'(0-) = {}; v''(0-) = {}".format(θ, v0, v1, v2))
-    #     return negsol
-        possol = self.ODEsolver([0, self.zr], dv0, self.dvr, θ)
+        possol = self.__ODEsolver([0, self.zr], dv0, self.dvr, θ)
         v0 = possol.y[0, 0]
         v1 = possol.y[1, 0]
-        (min_val,_) = self.mined(1e-6, v1)
+        (min_val,_) = self.__mined(1e-6, v1)
         v2 = 2 / norm(self.σz) ** 2 * (self.δ * v0 - min_val + 1 / (2 * θ) *  np.array([0.01, v1]).dot(self.σ).dot(self.σ.T).dot(np.array([[0.01],[v1]])))
         # print("For θ = {}, v(0+) = {}; v'(0+) = {}; v''(0+) = {}".format(θ, v0, v1, v2))
         
@@ -290,6 +294,7 @@ class SturcturedModel():
         posSpline = CubicSpline(possol.x, possol.y, axis = 1)
         posSplined = posSpline(x_pos)
         
+        # x, y yields the solutions; diff measures whether v'(0) matches at x = 0
         res['x'] = np.hstack([x_neg, x_pos[1:]])
         res['y'] = np.hstack([negSplined, posSplined[:,1:]])
         res['possol'] = possol
@@ -298,15 +303,15 @@ class SturcturedModel():
         res['dv0'] = dv0
         return res
 
-    def Distortion(self, sol, θ):
-        # Calculate R
+    def __Distortion(self, sol, θ):
+        # Calculate Drift __Distortion (ηᵤ ,ηₛ) given ODE solutions and θ
         Nz = len(sol['x'])
         s2 = np.zeros(Nz)
         s1 = np.zeros(Nz)
         
         for j in range(Nz):
-            (_, s2[j]) = self.mined(sol['x'][j], sol['y'][1,j])
-            s1[j] = self.S1(s2[j], sol['x'][j])
+            (_, s2[j]) = self.__mined(sol['x'][j], sol['y'][1,j])
+            s1[j] = self.__S1(s2[j], sol['x'][j])
             
         s = np.vstack([s1,s2])
         r = solve(self.σ, s)
@@ -317,25 +322,25 @@ class SturcturedModel():
         
         return (rh, s1, s2)
 
-    def RelativeEntropyUS(self, ηᵤ ,ηₛ , zgrid):
+    def __RelativeEntropyUS(self, ηᵤ ,ηₛ , zgrid):
+        # calculate given drifts distortion ηᵤ ,ηₛ calculate relative entropy qus
         Nz = len(zgrid)
         Q = np.zeros([Nz, Nz])
         for j in range(Nz):
             if j == 0:
-                Q[0, 0] = (self.σz.T.dot(ηᵤ[:,j]) + self.αẑ - self.κ̂ * zgrid[j]) / (self.Dz) - 0.5 * norm(self.σz) ** 2 / (self.Dz ** 2)
-                Q[0, 1] = -(self.σz.T.dot(ηᵤ[:,j]) + self.αẑ - self.κ̂ * zgrid[j]) / (self.Dz) + norm(self.σz) ** 2 / (self.Dz ** 2)
+                Q[0, 0] = (self.σz.T.dot(ηᵤ[:,j]) + self.αz - self.βz * zgrid[j]) / (self.Dz) - 0.5 * norm(self.σz) ** 2 / (self.Dz ** 2)
+                Q[0, 1] = -(self.σz.T.dot(ηᵤ[:,j]) + self.αz - self.βz * zgrid[j]) / (self.Dz) + norm(self.σz) ** 2 / (self.Dz ** 2)
                 Q[0, 2] = -0.5 * norm(self.σz) ** 2 / self.Dz ** 2
                 
             elif j == Nz - 1:
-                Q[j, j] = -(self.σz.T.dot(ηᵤ[:,j]) + self.αẑ - self.κ̂ * zgrid[j]) / (self.Dz) - 0.5 * norm(self.σz) ** 2 / (self.Dz ** 2)
-                Q[j, j - 1] = (self.σz.T.dot(ηᵤ[:,j]) + self.αẑ - self.κ̂ * zgrid[j]) / (self.Dz) + norm(self.σz) ** 2 / (self.Dz ** 2)
+                Q[j, j] = -(self.σz.T.dot(ηᵤ[:,j]) + self.αz - self.βz * zgrid[j]) / (self.Dz) - 0.5 * norm(self.σz) ** 2 / (self.Dz ** 2)
+                Q[j, j - 1] = (self.σz.T.dot(ηᵤ[:,j]) + self.αz - self.βz * zgrid[j]) / (self.Dz) + norm(self.σz) ** 2 / (self.Dz ** 2)
                 Q[j, j - 2] = -0.5 * norm(self.σz) ** 2 / self.Dz ** 2
                     
             else:
-                
-                Q[j, j - 1] = (self.σz.T.dot(ηᵤ[:,j]) + self.αẑ - self.κ̂ * zgrid[j]) / (2 * self.Dz) - 0.5 * norm(self.σz) ** 2 / (self.Dz ** 2)
+                Q[j, j - 1] = (self.σz.T.dot(ηᵤ[:,j]) + self.αz - self.βz * zgrid[j]) / (2 * self.Dz) - 0.5 * norm(self.σz) ** 2 / (self.Dz ** 2)
                 Q[j, j] = norm(self.σz) ** 2 / self.Dz ** 2
-                Q[j, j + 1] = -(self.σz.T.dot(ηᵤ[:,j]) + self.αẑ - self.κ̂ * zgrid[j]) / (2 * self.Dz) - 0.5 * norm(self.σz) ** 2 / (self.Dz ** 2)
+                Q[j, j + 1] = -(self.σz.T.dot(ηᵤ[:,j]) + self.αz - self.βz * zgrid[j]) / (2 * self.Dz) - 0.5 * norm(self.σz) ** 2 / (self.Dz ** 2)
                 
         tmp = ηᵤ - ηₛ
         rhs = (tmp[0,:] ** 2 + tmp[1,:] ** 2) / 2
@@ -345,26 +350,32 @@ class SturcturedModel():
         q = np.sqrt(sol[zgrid == self.z̄] * 2)
         return q
 
-    def CalibratingTheta(self, θ, dv0, gridsearch = False):
+    def __CalibratingTheta(self, θ, gridsearch = False):
+        # Calibrating θ
         if gridsearch:
-            res = self.MatchODE(θ,None)
+            # If calling this function is for the purpose of grid searches
+            res = self.__MatchODE(θ,None)
             if res['diff'] > 1:
+                # If the value is not matching at dv0, we record θ as not solved
                 return np.inf
             else:
-                (Distorted, _, _) = self.Distortion(res, θ)
-                qᵤₛ = self.RelativeEntropyUS(Distorted[2:,:],Distorted[:2, :], res['x'])
+                # Else return the difference for difference between qus(for this θ value) and target qus(self.qus)
+                (Distorted, _, _) = self.__Distortion(res, θ)
+                qᵤₛ = self.__RelativeEntropyUS(Distorted[2:,:],Distorted[:2, :], res['x'])
                 return qᵤₛ - self.qᵤₛ
         else:
 
-            res = self.MatchODE(θ,None)
+            # if it's not grid search, record dv Error and qus error as a diagnostic whether θ solves for this case
+            res = self.__MatchODE(θ,None)
             self.dvErr = res['diff']
-            (Distorted, _, _) = self.Distortion(res, θ)
-            qᵤₛ = self.RelativeEntropyUS(Distorted[2:,:],Distorted[:2, :], res['x'])
+            (Distorted, _, _) = self.__Distortion(res, θ)
+            qᵤₛ = self.__RelativeEntropyUS(Distorted[2:,:],Distorted[:2, :], res['x'])
             self.qErr = qᵤₛ - self.qᵤₛ
             # print(qᵤₛ - self.qᵤₛ)
             return qᵤₛ - self.qᵤₛ
 
-    def solvetheta(self, dv0):
+    def solvetheta(self):
+        # this function solves θ to match target qus given model's q0s by running a grid search given our priori knowledge about θ
         if self.qᵤₛ == np.inf:
             self.θ =  np.inf
             self.status = 1
@@ -372,19 +383,22 @@ class SturcturedModel():
             thetalist = [0.1, 0.2, 0.3, 0.4, 0.6, 0.8, 1.0, 1.2]
             values = []
             for theta in thetalist:
-                values.append(self.CalibratingTheta(theta, dv0, gridsearch = True))
+                values.append(self.__CalibratingTheta(theta, gridsearch = True))
 
             
             minIdx = np.argmin(abs(np.array(values)))
             theta0guess = thetalist[minIdx]
 
-            self.θ = np.squeeze(fsolve(self.CalibratingTheta, theta0guess, (dv0, False), maxfev = 20))
+            # cast initial guesses with the lowest difference with target qus
+
+            self.θ = np.squeeze(fsolve(self.__CalibratingTheta, theta0guess, (False), maxfev = 20))
             if self.qErr < 1e-2 and self.dvErr < 1e-4:
                 self.status = 1
     
     def HL(self, calHL):
-        res = self.MatchODE(self.θ, self.dv0)
-        (Distorted, s1, s2) = self.Distortion(res, self.θ)
+        # calculate half life of mistake probabilities and update the Drift Distortions
+        res = self.__MatchODE(self.θ, self.dv0)
+        (Distorted, s1, s2) = self.__Distortion(res, self.θ)
 
         self.v = res
         self.Distorted = Distorted
@@ -392,14 +406,15 @@ class SturcturedModel():
         self.s2 = s2
         
         if calHL:
-            ρ = self.ChernoffEntropy(Distorted[2:,:])
+            ρ = self.__ChernoffEntropy(Distorted[2:,:])
             hl = np.log(2) / ρ
         else:
             hl = None
         
         self.hl = hl
          
-    def ChernoffEntropy(self, η):
+    def __ChernoffEntropy(self, η):
+        # calculate Chernoff Entropy as described in section 5.2
         def Rhos(s):
 
             Nz = len(self.v['x'])
@@ -407,20 +422,20 @@ class SturcturedModel():
             Q = np.zeros([Nz, Nz])
             for j in range(Nz):
                 if j == 0:
-                    Q[0, 0] = -s * (1-s) / 2 * norm(η[:,j]) ** 2 - (s * self.σz.T.dot(η[:,j]) + self.αẑ - self.κ̂ * self.v['x'][j]) / (self.Dz) + 0.5 * norm(self.σz) ** 2 / (self.Dz ** 2)
-                    Q[0, 1] = (s * self.σz.T.dot(η[:,j]) + self.αẑ - self.κ̂ * self.v['x'][j]) / (self.Dz) - norm(self.σz) ** 2 / (self.Dz ** 2)
+                    Q[0, 0] = -s * (1-s) / 2 * norm(η[:,j]) ** 2 - (s * self.σz.T.dot(η[:,j]) + self.αz - self.βz * self.v['x'][j]) / (self.Dz) + 0.5 * norm(self.σz) ** 2 / (self.Dz ** 2)
+                    Q[0, 1] = (s * self.σz.T.dot(η[:,j]) + self.αz - self.βz * self.v['x'][j]) / (self.Dz) - norm(self.σz) ** 2 / (self.Dz ** 2)
                     Q[0, 2] = 0.5 * norm(self.σz) ** 2 / self.Dz ** 2
 
                 elif j == Nz - 1:
-                    Q[j, j] = (-s * (1-s) / 2 * norm(η[:,j]) ** 2) + (s * self.σz.T.dot(η[:,j]) + self.αẑ - self.κ̂ * self.v['x'][j]) / (self.Dz) + 0.5 * norm(self.σz) ** 2 / (self.Dz ** 2)
-                    Q[j, j - 1] = -(s * self.σz.T.dot(η[:,j]) + self.αẑ - self.κ̂ * self.v['x'][j]) / (self.Dz) - norm(self.σz) ** 2 / (self.Dz ** 2)
+                    Q[j, j] = (-s * (1-s) / 2 * norm(η[:,j]) ** 2) + (s * self.σz.T.dot(η[:,j]) + self.αz - self.βz * self.v['x'][j]) / (self.Dz) + 0.5 * norm(self.σz) ** 2 / (self.Dz ** 2)
+                    Q[j, j - 1] = -(s * self.σz.T.dot(η[:,j]) + self.αz - self.βz * self.v['x'][j]) / (self.Dz) - norm(self.σz) ** 2 / (self.Dz ** 2)
                     Q[j, j - 2] = 0.5 * norm(self.σz) ** 2 / self.Dz ** 2
 
                 else:
 
-                    Q[j, j - 1] = -(s * self.σz.T.dot(η[:,j]) + self.αẑ - self.κ̂ * self.v['x'][j]) / (2 * self.Dz) + 0.5 * norm(self.σz) ** 2 / (self.Dz ** 2)
+                    Q[j, j - 1] = -(s * self.σz.T.dot(η[:,j]) + self.αz - self.βz * self.v['x'][j]) / (2 * self.Dz) + 0.5 * norm(self.σz) ** 2 / (self.Dz ** 2)
                     Q[j, j] = - s * (1-s) / 2 * norm(η[:,j]) ** 2 - norm(self.σz) ** 2 / self.Dz ** 2
-                    Q[j, j + 1] = (s * self.σz.T.dot(η[:,j]) + self.αẑ - self.κ̂ * self.v['x'][j]) / (2 * self.Dz) + 0.5 * norm(self.σz) ** 2 / (self.Dz ** 2)
+                    Q[j, j + 1] = (s * self.σz.T.dot(η[:,j]) + self.αz - self.βz * self.v['x'][j]) / (2 * self.Dz) + 0.5 * norm(self.σz) ** 2 / (self.Dz ** 2)
 
             D,_ = eig(Q)
             rhos = max(np.real(D))
@@ -430,32 +445,33 @@ class SturcturedModel():
 
         return -res.fun
 
-    def Drift(self):
+    def UpdatingDrift(self):
+        # calculate new drifts accomodating drift distortion solutions
         drift = self.σ.dot(self.Distorted[2:,:])
-        self.drifty = drift[0,:] + self.αŷ + self.β̂ * (self.v['x'] - self.z̄)
-        self.driftz = drift[1,:] + self.αẑ - self.κ̂ * (self.v['x'] - self.z̄)
+        self.driftk = drift[0,:] + self.αk + self.βk * (self.v['x'] - self.z̄)
+        self.driftz = drift[1,:] + self.αz - self.βz * (self.v['x'] - self.z̄)
         
         Nz = len(self.v['x'])
         d2v = np.zeros(Nz)
         for j in range(Nz):
-            temp = self.HJBODE(self.v['x'][j], self.v['y'][:,j], self.θ)
+            temp = self.__HJBODE(self.v['x'][j], self.v['y'][:,j], self.θ)
             d2v[j] = temp[1]
         
         self.v['y'] = np.vstack([self.v['y'][:2,:], d2v])
         
     def ExpectH(self):
-        # unpack parameters
+        # calculate shock price elasiticities at .10, .50 and .90 quantiles as described in section 7.2
         
         T = 1000
         Dt = 0.1
         
         drift = self.σ.dot(self.Distorted[2:,:])
-        μz = drift[1,:] + self.αẑ - self.κ̂ * self.v['x']
+        μz = drift[1,:] + self.αz - self.βz * self.v['x']
         
         h1 = self.Distorted[2,:]
         expectH1 = FeynmanKac(μz, self.σz, self.v['x'], h1, T, Dt)
-        mean = self.αẑ / self.κ̂
-        std = np.sqrt(norm(self.σz) ** 2 / (2 * self.κ̂))
+        mean = self.αz / self.βz
+        std = np.sqrt(norm(self.σz) ** 2 / (2 * self.βz))
         z10 = scipy.stats.norm.ppf(0.1, mean, std)
         z90 = scipy.stats.norm.ppf(0.9, mean, std)
         z50 = scipy.stats.norm.ppf(0.5, mean, std)
@@ -464,9 +480,10 @@ class SturcturedModel():
         q90 = InterpQuantile(self.v['x'], expectH1, z90)
         q50 = InterpQuantile(self.v['x'], expectH1, z50)
         
-        self.shock1 = {'q10': -q10 + 0.01 * self.σy[0],
-                    'q50': -q50 + 0.01 * self.σy[0],
-                    'q90': -q90 + 0.01 * self.σy[0]}
+        # storing .10, .50 and .90 quantile of first shock
+        self.shock1 = {'q10': -q10 + 0.01 * self.σk[0],
+                    'q50': -q50 + 0.01 * self.σk[0],
+                    'q90': -q90 + 0.01 * self.σk[0]}
         
         self.h1 = {'q10': -q10,
                     'q50': -q50,
@@ -482,9 +499,10 @@ class SturcturedModel():
         q90 = InterpQuantile(self.v['x'], expectH2, z90)
         q50 = InterpQuantile(self.v['x'], expectH2, z50)
         
-        self.shock2 = {'q10': -q10 + 0.01 * self.σy[1],
-                    'q50': -q50 + 0.01 * self.σy[1],
-                    'q90': -q90 + 0.01 * self.σy[1]}
+        # storing .10, .50 and .90 quantile of second shock
+        self.shock2 = {'q10': -q10 + 0.01 * self.σk[1],
+                    'q50': -q50 + 0.01 * self.σk[1],
+                    'q90': -q90 + 0.01 * self.σk[1]}
         
         self.h2 = {'q10': -q10,
                     'q50': -q50,
@@ -500,6 +518,7 @@ class SturcturedModel():
         q90 = InterpQuantile(self.v['x'], expectR1, z90)
         q50 = InterpQuantile(self.v['x'], expectR1, z50)
         
+        # storing .10, .50 and .90 quantile of ambiguity price of the first shock
         self.ambiguity1 = {'q10': -q10,
                     'q50': -q50,
                     'q90': -q90}
@@ -514,14 +533,17 @@ class SturcturedModel():
         q90 = InterpQuantile(self.v['x'], expectR2, z90)
         q50 = InterpQuantile(self.v['x'], expectR2, z50)
         
+        # storing .10, .50 and .90 quantile of ambiguity price of the second shock
         self.ambiguity2 = {'q10': -q10,
                     'q50': -q50,
                     'q90': -q90}
-        
+
+        # storing .10, .50 and .90 quantile of misspecification price of the first shock
         self.misspec1 = {'q10': -self.ambiguity1['q10'] + self.h1['q10'],
                     'q50': -self.ambiguity1['q50'] + self.h1['q50'],
                     'q90': -self.ambiguity1['q90'] + self.h1['q90']}
         
+        # storing .10, .50 and .90 quantile of misspecification price of the second shock
         self.misspec2 = {'q10': -self.ambiguity2['q10'] + self.h2['q10'],
                     'q50': -self.ambiguity2['q50'] + self.h2['q50'],
                     'q90': -self.ambiguity2['q90'] + self.h2['q90']}
@@ -529,12 +551,14 @@ class SturcturedModel():
 class TenuousModel():
 
     def __init__(self, param = params, q0s = [0.05, 0.1], qus = [0.1, 0.2], ρs = [0.5, 1], load = True):
+        # This class acts as a wrapper for a set of Structured Models we defined earlier
+        # it stores a dictionaries indexed by a set of q0s, qus and potentially ρ that might be interested by users to compare
         self.params = {}
-        self.params['αŷ'] = params['αk']
-        self.params['αẑ'] = params['αz']
-        self.params['β̂'] = params['βk']
-        self.params['κ̂'] = params['βz']
-        self.params['σy'] = params['σy']
+        self.params['αk'] = params['αk']
+        self.params['αz'] = params['αz']
+        self.params['βk'] = params['βk']
+        self.params['βz'] = params['βz']
+        self.params['σk'] = params['σk']
         self.params['σz'] = params['σz']
         self.params['δ'] = params['δ']
 
@@ -578,7 +602,6 @@ class TenuousModel():
         self.ρ_list = sorted(ρs)
         self.models = {}
         
-      
     def solve(self):
         for q0s in self.q0s_list:
             for qus in self.qus_list:
@@ -586,18 +609,18 @@ class TenuousModel():
                 for ρ in self.ρ_list:
                     print("q0s = {}; qus = {}; rho2 = {};".format(q0s, qus, ρ * ρ_restricted))
                     if ρ == 1:
-                        self.models[q0s, qus, ρ] = SturcturedModel(self.params, q0s, qus)
-                        self.models[q0s, qus, ρ].ApproxBound()
-                        self.models[q0s, qus, ρ].solvetheta(None)
-                        self.models[q0s, qus, ρ].HL(calHL = True)
-                        self.models[q0s, qus, ρ].Drift()
-                        self.models[q0s, qus, ρ].ExpectH()
+                        self.models[q0s, qus, ρ] = StructuredModel(self.params, q0s, qus)
+                        self.models[q0s, qus, ρ].ApproxBound()       # Approximating boundary conditions
+                        self.models[q0s, qus, ρ].solvetheta()        # Solving ODE by matching θ to designated qus
+                        self.models[q0s, qus, ρ].HL(calHL = True)    # Caculate Half life of entropy and drift distortion
+                        self.models[q0s, qus, ρ].UpdatingDrift()     # calculate new drifts 
+                        self.models[q0s, qus, ρ].ExpectH()           # Calculate shock price elasticities
 
-                    self.models[q0s, qus, ρ] = SturcturedModel(self.params, q0s, qus, ρ * ρ_restricted)
+                    self.models[q0s, qus, ρ] = StructuredModel(self.params, q0s, qus, ρ * ρ_restricted)
                     self.models[q0s, qus, ρ].ApproxBound()
-                    self.models[q0s, qus, ρ].solvetheta(None)
+                    self.models[q0s, qus, ρ].solvetheta()
                     self.models[q0s, qus, ρ].HL(calHL = True)
-                    self.models[q0s, qus, ρ].Drift()
+                    self.models[q0s, qus, ρ].UpdatingDrift()
                     self.models[q0s, qus, ρ].ExpectH()
 
     def driftplot(self):
@@ -613,7 +636,7 @@ class TenuousModel():
             go.Scatter(x = x - self.params['z̄'], y = self.models[q0, np.inf, rho].driftz, 
                 name = 'Worst Case Scenario', legendgroup = 'Worst Case Scenario', line = dict(color = 'red', dash = 'dot', width = 3), showlegend = True)) 
         fig.add_trace(
-            go.Scatter(x = x - self.params['z̄'], y = self.params['αẑ'] - self.params['κ̂']* (x - self.params['z̄']), 
+            go.Scatter(x = x - self.params['z̄'], y = self.params['αz'] - self.params['βz']* (x - self.params['z̄']), 
                 name = 'Baseline Model', legendgroup = 'Baseline Model', line = dict(color = 'black', dash = 'solid', width = 3), showlegend = True))
         fig.update_layout(title = "Growth Rate Drift", titlefont = dict(size = 20))
 
@@ -672,405 +695,15 @@ class TenuousModel():
         figw = go.FigureWidget(fig)
         display(figw)
 
-
-    def DriftComparison(self, q0s = [0.05, 0.1], ρs = 1, qus = [0.1, 0.2, np.Inf]): # 
-        if type(q0s) == list:  # plot against q
-            titles = [r"$\sf q_{{s,0}}: {}$".format(q) for q in q0s]
-            fig = make_subplots(rows = 1, cols = len(q0s), print_grid = False, subplot_titles = titles)
-            x = self.models[q0s[0], np.inf, 1].v['x']
-
-            for i, q0 in enumerate(q0s):
-                if i == 0:
-                    fig.add_trace(
-                        go.Scatter(x = x - self.params['z̄'], y = self.models[q0, 0.2, ρs].driftz, 
-                                                name = 'qᵤₛ = .2', legendgroup = 'qᵤₛ = .2', line = dict(color = 'green', dash = 'dashdot', width = 3), showlegend = True),
-                            row = 1, col = i +1) 
-                    fig.add_trace(
-                        go.Scatter(x = x - self.params['z̄'], y = self.models[q0, 0.1, ρs].driftz, 
-                                            name = 'qᵤₛ = .1',legendgroup = 'qᵤₛ = .1', line = dict(color = '#1f77b4', dash = 'solid', width = 3), showlegend = True),
-                            row = 1, col = i +1) 
-                    fig.add_trace(
-                        go.Scatter(x = x - self.params['z̄'], y = self.models[q0, np.inf, ρs].driftz, 
-                                                name = 'Worst Case Scenario', legendgroup = 'Worst Case Scenario', line = dict(color = 'red', dash = 'dot', width = 3), showlegend = True),
-                            row = 1, col = i +1) 
-                    fig.add_trace(
-                        go.Scatter(x = x - self.params['z̄'], y = self.params['αẑ'] - self.params['κ̂']* (x - self.params['z̄']), 
-                                                name = 'Baseline Model', legendgroup = 'Baseline Model', line = dict(color = 'black', dash = 'solid', width = 3), showlegend = True),
-                            row = 1, col = i +1)
-                else:
-                    fig.add_trace(
-                        go.Scatter(x = x - self.params['z̄'], y = self.models[q0, 0.2, ρs].driftz, 
-                                                name = 'qᵤₛ = .2', legendgroup = 'qᵤₛ = .2', line = dict(color = 'green', dash = 'dashdot', width = 3), showlegend = False),
-                            row = 1, col = i +1) 
-                    fig.add_trace(
-                        go.Scatter(x = x - self.params['z̄'], y = self.models[q0, 0.1, ρs].driftz, 
-                                            name = 'qᵤₛ = .1',legendgroup = 'qᵤₛ = .1', line = dict(color = '#1f77b4', dash = 'solid', width = 3), showlegend = False),
-                            row = 1, col = i +1) 
-                    fig.add_trace(
-                        go.Scatter(x = x - self.params['z̄'], y = self.models[q0, np.inf, ρs].driftz, 
-                                                name = 'Worst Case Scenario', legendgroup = 'Worst Case Scenario', line = dict(color = 'red', dash = 'dot', width = 3), showlegend = False),
-                            row = 1, col = i +1) 
-                    fig.add_trace(
-                        go.Scatter(x = x - self.params['z̄'], y = self.params['αẑ'] - self.params['κ̂']* (x - self.params['z̄']), 
-                                                name = 'Baseline Model', legendgroup = 'Baseline Model', line = dict(color = 'black', dash = 'solid', width = 3), showlegend = False),
-                            row = 1, col = i +1)
-            
-            fig.update_layout(title = r"$\text{Growth rate drift comparisions with different } \sf q_{{0,s}}$", titlefont = dict(size = 20))
-
-        else: # plot against rho
-
-            rho = self.models[q0s, 0.1, 1].ρ2
-            titles = [r"$\text{{Relaxed }}\rho_2 = {{\frac{{\sf q_{{s,0}}^2}}{{2|\sigma^2|}}}}$ = {:.2f}".format(rho * ρs[0]),  
-                        r"$\text{{Restricted }}\rho_2 = {{\frac{{\sf q_{{s,0}}^2}}{{|\sigma^2|}}}}$ = {:.2f}".format(rho * ρs[1])]
-            fig = make_subplots(rows = 1, cols = len(ρs), print_grid = False, subplot_titles = titles)
-            q0 = q0s
-            x = self.models[q0, np.inf, 1].v['x']
-            for i, rs in enumerate(ρs):
-                
-                if i == 0:
-                    fig.add_trace(
-                        go.Scatter(x = x - self.params['z̄'], y = self.models[q0, 0.2, rs].driftz, 
-                                                name = 'qᵤₛ = .2', legendgroup = 'qᵤₛ = .2', line = dict(color = 'green', dash = 'dashdot', width = 3), showlegend = True),
-                            row = 1, col = i +1) 
-                    fig.add_trace(
-                        go.Scatter(x = x - self.params['z̄'], y = self.models[q0, 0.1, rs].driftz, 
-                                            name = 'qᵤₛ = .1',legendgroup = 'qᵤₛ = .1', line = dict(color = '#1f77b4', dash = 'solid', width = 3), showlegend = True),
-                            row = 1, col = i +1) 
-                    fig.add_trace(
-                        go.Scatter(x = x - self.params['z̄'], y = self.models[q0, np.inf, rs].driftz, 
-                                                name = 'Worst Case Scenario', legendgroup = 'Worst Case Scenario', line = dict(color = 'red', dash = 'dot', width = 3), showlegend = True),
-                            row = 1, col = i +1) 
-                    fig.add_trace(
-                        go.Scatter(x = x - self.params['z̄'], y = self.params['αẑ'] - self.params['κ̂']* (x - self.params['z̄']), 
-                                                name = 'Baseline Model', legendgroup = 'Baseline Model', line = dict(color = 'black', dash = 'solid', width = 3), showlegend = True),
-                            row = 1, col = i +1)
-                else:
-                    fig.add_trace(
-                        go.Scatter(x = x - self.params['z̄'], y = self.models[q0, 0.2, rs].driftz, 
-                                                name = 'qᵤₛ = .2', legendgroup = 'qᵤₛ = .2', line = dict(color = 'green', dash = 'dashdot', width = 3), showlegend = False),
-                            row = 1, col = i +1) 
-                    fig.add_trace(
-                        go.Scatter(x = x - self.params['z̄'], y = self.models[q0, 0.1, rs].driftz, 
-                                            name = 'qᵤₛ = .1',legendgroup = 'qᵤₛ = .1', line = dict(color = '#1f77b4', dash = 'solid', width = 3), showlegend = False),
-                            row = 1, col = i +1) 
-                    fig.add_trace(
-                        go.Scatter(x = x - self.params['z̄'], y = self.models[q0, np.inf, rs].driftz, 
-                                                name = 'Worst Case Scenario', legendgroup = 'Worst Case Scenario', line = dict(color = 'red', dash = 'dot', width = 3), showlegend = False),
-                            row = 1, col = i +1) 
-                    fig.add_trace(
-                        go.Scatter(x = x - self.params['z̄'], y = self.params['αẑ'] - self.params['κ̂']* (x - self.params['z̄']), 
-                                                name = 'Baseline Model', legendgroup = 'Baseline Model', line = dict(color = 'black', dash = 'solid', width = 3), showlegend = False),
-                            row = 1, col = i +1)
-            fig.update_layout(title = r"$\text{Growth rate drift comparisions betweeen restricted and unrestricted } \rho_2$", titlefont = dict(size = 20))
-
-        for i in range(2):
-                
-            fig['layout']['yaxis{}'.format(i+1)].update(showgrid = False)
-            fig['layout']['xaxis{}'.format(i+1)].update(showgrid = False)
-            fig['layout']['xaxis{}'.format(i+1)].update(title=go.layout.xaxis.Title(
-                                        text="z", font=dict(size=16)), showgrid = False)
-                
-        fig['layout']['yaxis1'].update(title=go.layout.yaxis.Title(
-                                        text="μz", font=dict(size=16)), showgrid = False)
-            
-            
-        fig.update_xaxes(range = [-0.5, 0.5], row = 1, col = 1)
-        fig.update_yaxes(range = [-0.025, 0.01], row = 1, col = 1)
-        fig.update_xaxes(range = [-0.5, 0.5], row = 1, col = 2)
-        fig.update_yaxes(range = [-0.025, 0.01], row = 1, col = 2)
-        fig.show()
-    
-    def Figure6(self, q0s = [0.05, 0.1], qus = 0.2):
-        x = np.arange(0, 1000.1 ,0.1)
-        fig = make_subplots(rows = 2, cols = 2, print_grid = False, vertical_spacing = 0.08,
-                    subplot_titles = (('first shock with qₛₒ = {:.2f}'.format(q0s[0]), 'first shock with qₛₒ = {:.2f}'.format(q0s[1]),\
-                                    'second shock with qₛₒ = {:.2f}'.format(q0s[0]), 'second shock with qₛₒ = {:.2f}'.format(q0s[1]))))
-        for i, s in enumerate(['shock1', 'shock2']):
-            for j, q in enumerate(q0s):
-                model = self.models[q, qus, 1]
-                fig.add_trace(go.Scatter(x = x, y = getattr(model, s)['q10'], 
-                                line = dict(color = 'red', dash = 'dot', width = 3), showlegend = False, legendgroup='.1 decile', name = '.1 decile'),
-                                row = i + 1, col = j + 1) 
-                fig.add_trace(go.Scatter(x = x, y = getattr(model, s)['q50'], 
-                                line = dict(color = 'Black', dash = 'solid', width = 3), showlegend = False, legendgroup='median', name='median'),
-                                row = i + 1, col = j + 1) 
-                fig.add_trace(go.Scatter(x = x, y = getattr(model, s)['q90'], 
-                                line = dict(color = '#1f77b4', dash = 'dash', width = 3), showlegend = False, legendgroup='.9 decile', name='.9 decile'),
-                                row = i + 1, col = j + 1) 
-        fig.data[0]['showlegend'] = True
-        fig.data[1]['showlegend'] = True
-        fig.data[2]['showlegend'] = True
-        for i in range(4):
-                
-            fig['layout']['yaxis{}'.format(i+1)].update(showgrid = False)
-            fig['layout']['xaxis{}'.format(i+1)].update(showgrid = False)
-        for i in range(2,4):
-            fig['layout']['xaxis{}'.format(i+1)].update(title=go.layout.xaxis.Title(
-                                        text="Horizon(quarters)", font=dict(size=16)), showgrid = False)
-
-        for i in range(2):
-            for j in range(2):
-                fig.update_xaxes(range = [0, 40], row = i+1, col = j+1)
-                fig.update_yaxes(range = [0, 0.32], row = i+1, col = j+1)
-        fig.update_layout(height = 700)
-        fig.update_layout(title = r"$\text{Shock price elasticities with different }\sf q_{s,0}$", titlefont = dict(size = 20))
-        fig.show()
-
-    def Figure7(self, q0s = 0.1, qus = 0.2):
-        x = np.arange(0, 1000.1 ,0.1)
-        fig = make_subplots(rows = 2, cols = 2, print_grid = False, vertical_spacing = 0.08,
-                    subplot_titles = (('ambiguity price for the first shock', 'misspecification price for the first shock',\
-                                    'ambiguity price for the second shock', 'misspecification price for the second shock')))
-        for i, s in enumerate(['ambiguity1', 'ambiguity2', 'misspec1', 'misspec2']):
-            model = self.models[q0s, qus, 1]
-            fig.add_trace(go.Scatter(x = x, y = getattr(model, s)['q10'], 
-                            line = dict(color = 'red', dash = 'dot', width = 3), showlegend = False, legendgroup='.1 decile', name = '.1 decile'),
-                        row = (i+1) % 2 + 1, col = int((i+2) / 2))
-            fig.add_trace(go.Scatter(x = x, y = getattr(model, s)['q50'], 
-                            line = dict(color = 'Black', dash = 'solid', width = 3), showlegend = False, legendgroup='median', name='median'),
-                        row = (i+1) % 2 + 1, col = int((i+2) / 2))
-            fig.add_trace(go.Scatter(x = x, y = getattr(model, s)['q90'], 
-                            line = dict(color = '#1f77b4', dash = 'dash', width = 3), showlegend = False, legendgroup='.9 decile', name='.9 decile'),
-                        row = (i+1) % 2 + 1, col = int((i+2) / 2))
-
-        fig.data[0]['showlegend'] = True
-        fig.data[1]['showlegend'] = True
-        fig.data[2]['showlegend'] = True
-        for i in range(4):
-                
-            fig['layout']['yaxis{}'.format(i+1)].update(showgrid = False)
-            fig['layout']['xaxis{}'.format(i+1)].update(showgrid = False)
-
-        for i in range(2,4):
-            fig['layout']['xaxis{}'.format(i+1)].update(title=go.layout.xaxis.Title(
-                                        text="Horizon(quarters)", font=dict(size=16)), showgrid = False)
-                
-            
-        for i in range(2):
-            for j in range(2):
-                fig.update_xaxes(range = [0, 40], row = i+1, col = j+1)
-                fig.update_yaxes(range = [0, 0.32], row = i+1, col = j+1)
-        fig.update_layout(height = 700)
-        fig.update_layout(title = "Shock price elasticities Decomposition", titlefont = dict(size = 20))
-        fig.show()
-
-    def driftIntPlot(self, q0s = None, qus = None):
-        fig = go.Figure()
-        base = None
-        if isinstance(q0s,  (int, float, np.float)): # plot along q0s
-            q_list = self.qᵤₛ_list
-            for qus in q_list:
-                model = self.models[q0s, qus, 1]
-                if base is None:
-                    base = True
-                    fig.add_trace(go.Scatter(x = model.v['x']  - params['z̄'], y = self.params['αẑ'] - self.params['κ̂'] * model.v['x']  - self.params['z̄'],
-                        name = 'Baseline Model', 
-                        line = dict(color = 'black', dash = 'solid', width = 3), showlegend = True))
-                if qus == q_list[int(0.3 * len(q_list))]:
-                    fig.add_trace(go.Scatter(x = model.v['x'] - params['z̄'], y = model.driftz, 
-                        name = r'$q_{{u,s}} = {}$'.format(qus),
-                        line = dict(color = '#1f77b4', dash = 'dash', width = 3), legendgroup = 'Current Line', showlegend = True, visible = True))
-                elif qus == np.inf:
-                    fig.add_trace(go.Scatter(x = model.v['x'] - params['z̄'], y = model.driftz, 
-                        name = 'Worst Case',
-                        line = dict(color = '#1f77b4', dash = 'dash', width = 3), legendgroup = 'Current Line', showlegend = True, visible = False)) 
-                else:
-                    fig.add_trace(go.Scatter(x = model.v['x'] - params['z̄'], y = model.driftz, 
-                        name = r'$q_{{u,s}} = {}$'.format(qus),
-                        line = dict(color = '#1f77b4', dash = 'dash', width = 3), legendgroup = 'Current Line', showlegend = True, visible = False)) 
-
-            fig.update_layout(title = r"$\text{{Growth rate drift comparisions with }}q_{{0,s}} = {:.2f}$".format(q0s), titlefont = dict(size = 20), height = 700)
-            
-            steps = []
-            for i in range(1, len(q_list) + 1):
-                if i == len(q_list):
-                    label = 'Worst Case'
-                else:
-                    label =  '{:.2f}'.format(q_list[i-1])
-                step = dict(
-                    method = 'restyle',
-                    args = ['visible', [False] * len(fig.data)],
-                    label = label
-                )
-                step['args'][1][0] = True
-                step['args'][1][i] = True
-                
-                steps.append(step)
-            sliders = [dict(active = int(0.3 * len(q_list)),
-                        currentvalue = {"prefix": "qus: "},
-                        pad = {"t": len(q_list) },
-                        steps = steps, y = -0.1)]
-
-        elif isinstance(qus, (int, float, np.float)):
-            q_list = self.q0s_list
-            for q0s in q_list:
-                model = self.models[q0s, qus, 1]
-                if base is None:
-                    base = True
-                    fig.add_trace(go.Scatter(x = model.v['x']  - params['z̄'], y = self.params['αẑ'] - self.params['κ̂'] * model.v['x']  - self.params['z̄'],
-                        name = 'Baseline Model', 
-                        line = dict(color = 'black', dash = 'solid', width = 3), showlegend = True))
-                if q0s == q_list[int(0.3 * len(q_list))]:
-                    fig.add_trace(go.Scatter(x = model.v['x'] - params['z̄'], y = model.driftz, 
-                        name = r'$q_{{0,s}} = {}$'.format(q0s),
-                        line = dict(color = '#1f77b4', dash = 'dash', width = 3), legendgroup = 'Current Line', showlegend = True, visible = True))
-                else:
-                    fig.add_trace(go.Scatter(x = model.v['x'] - params['z̄'], y = model.driftz, 
-                        name = r'$q_{{0,s}} = {}$'.format(q0s),
-                        line = dict(color = '#1f77b4', dash = 'dash', width = 3), legendgroup = 'Current Line', showlegend = True, visible = False)) 
-            fig.update_layout(title = r"$\text{{Growth rate drift comparisions with }}q_{{u,s}} = {:.2f}$".format(qus), titlefont = dict(size = 20), height = 600)
-
-            steps = []
-            for i in range(1, len(q_list) + 1):
-                label =  '{:.2f}'.format(q_list[i-1])
-                step = dict(
-                    method = 'restyle',
-                    args = ['visible', [False] * len(fig.data)],
-                    label = label
-                )
-                step['args'][1][0] = True
-                step['args'][1][i] = True
-                
-                steps.append(step)
-            
-            sliders = [dict(active = int(0.3 * len(q_list)),
-                        currentvalue = {"prefix": "q0s: "},
-                        pad = {"t": len(q_list) },
-                        steps = steps, y = -0.1)]
-
-        fig.update_layout(xaxis = go.layout.XAxis(title=go.layout.xaxis.Title(
-                                            text="z", font=dict(size=16)),
-                                                tickfont=dict(size=12), showgrid = False),
-                        yaxis = go.layout.YAxis(title=go.layout.yaxis.Title(
-                                            text="μz", font=dict(size=16)),
-                                                tickfont=dict(size=12), showgrid = False),
-                        sliders = sliders
-                            )
-
-        fig['layout']['yaxis{}'.format(1)].update(showgrid = False)
-        fig['layout']['xaxis{}'.format(1)].update(showgrid = False)
-        # fig.update_layout(legend = dict(orientation = 'h', y = 1.1))
-        fig.update_xaxes(range = [-0.5, 0.5])
-        fig.update_yaxes(range = [-0.025, 0.01])
-        figw = go.FigureWidget(fig)
-        display(figw)
-
-    def shocksIntPlot(self, q0s = None, qus = None):
-        x = np.arange(0, 1000.1 ,0.1)
-        fig = make_subplots(rows = 2, cols = 3, print_grid = False, vertical_spacing = 0.08,
-                    subplot_titles = (('first shock', 'ambiguity price, first shock', 'misspecification price, first shock',
-                                    'second shock', 'ambiguity price, second shock', 'misspecification price, second shock')))
-        if isinstance(q0s,  (int, float, np.float)): 
-            q_list = self.qᵤₛ_list
-            for qus in q_list:
-                model = self.models[q0s, qus, 1]
-                if qus == q_list[int(0.3 * len(q_list))]:
-                    vis = True
-                else:
-                    vis = False
-                for i,s in enumerate(['shock1', 'ambiguity1', 'misspec1', 'shock2', 'ambiguity2', 'misspec2']):
-                    # print(i % 3 + 1, int((i+3)/ 3))
-                    
-                    fig.add_trace(go.Scatter(x = x, y = getattr(model, s)['q10'], 
-                        line = dict(color = 'red', dash = 'dot', width = 3), showlegend = False, legendgroup='.1 decile', name = '.1 decile',
-                        visible = vis), col = i % 3 + 1, row = int((i+3) / 3))
-                                
-                    fig.add_trace(go.Scatter(x = x, y = getattr(model, s)['q50'], 
-                        line = dict(color = 'Black', dash = 'solid', width = 3), showlegend = False, legendgroup='median', name='median',
-                        visible = vis), col = i % 3 + 1, row = int((i+3) / 3))
-                    fig.add_trace(go.Scatter(x = x, y = getattr(model, s)['q90'], 
-                        line = dict(color = '#1f77b4', dash = 'dash', width = 3), showlegend = False, legendgroup='.9 decile', name='.9 decile',
-                        visible = vis), col = i % 3 + 1, row = int((i+3) / 3))
-
-            fig.update_layout(title = r"$\text{{Shock Price Elasticities Decomposition with }}q_{{0,s}} = {:.2f}$".format(q0s), titlefont = dict(size = 20), height = 700)
-            steps = []
-            for i in range(len(q_list)):
-                if i == len(q_list):
-                    label = 'Worst Case'
-                else:
-                    label =  '{:.2f}'.format(q_list[i])
-                step = dict(
-                    method = 'restyle',
-                    args = ['visible', [False] * len(fig.data)],
-                    label = label
-                )
-                for j in range(18):
-                    step['args'][1][i * 18 + j] = True
-                
-                steps.append(step)
-            sliders = [dict(active = int(0.3 * len(q_list)),
-                        currentvalue = {"prefix": "qus: "},
-                        pad = {"t": len(q_list) },
-                        steps = steps, y = -0.15)]
-
-        elif isinstance(qus,  (int, float, np.float)): 
-            q_list = self.q0s_list
-            for q0s in q_list:
-                model = self.models[q0s, qus, 1]
-                if qus == q_list[int(0.3 * len(q_list))]:
-                    vis = True
-                else:
-                    vis = False
-                for i,s in enumerate(['shock1', 'ambiguity1', 'misspec1', 'shock2', 'ambiguity2', 'misspec2']):
-                    # print(i % 3 + 1, int((i+3)/ 3))
-                    
-                    fig.add_trace(go.Scatter(x = x, y = getattr(model, s)['q10'], 
-                        line = dict(color = 'red', dash = 'dot', width = 3), showlegend = False, legendgroup='.1 decile', name = '.1 decile',
-                        visible = vis), col = i % 3 + 1, row = int((i+3) / 3))
-                                
-                    fig.add_trace(go.Scatter(x = x, y = getattr(model, s)['q50'], 
-                        line = dict(color = 'Black', dash = 'solid', width = 3), showlegend = False, legendgroup='median', name='median',
-                        visible = vis), col = i % 3 + 1, row = int((i+3) / 3))
-                    fig.add_trace(go.Scatter(x = x, y = getattr(model, s)['q90'], 
-                        line = dict(color = '#1f77b4', dash = 'dash', width = 3), showlegend = False, legendgroup='.9 decile', name='.9 decile',
-                        visible = vis), col = i % 3 + 1, row = int((i+3) / 3))
-
-            fig.update_layout(title = r"$\text{{Shock Price Elasticities Decomposition with }}q_{{u,s}} = {:.2f}$".format(qus), titlefont = dict(size = 20), height = 700)
-            steps = []
-            for i in range(len(q_list)):
-                label =  '{:.2f}'.format(q_list[i])
-                step = dict(
-                    method = 'restyle',
-                    args = ['visible', [False] * len(fig.data)],
-                    label = label
-                )
-                for j in range(18):
-                    step['args'][1][i * 18 + j] = True
-                
-                steps.append(step)
-            sliders = [dict(active = int(0.3 * len(q_list)),
-                        currentvalue = {"prefix": "q0s: "},
-                        pad = {"t": len(q_list) },
-                        steps = steps, y = -0.15)]
-
-        for i in range(6):
-                
-            fig['layout']['yaxis{}'.format(i+1)].update(showgrid = False)
-            fig['layout']['xaxis{}'.format(i+1)].update(showgrid = False)
-        
-        for i in range(3,6):
-            fig['layout']['xaxis{}'.format(i+1)].update(title=go.layout.xaxis.Title(
-                                        text="Horizon(quarters)", font=dict(size=16)), showgrid = False)
-                
-            
-        for i in range(3):
-            for j in range(3):
-                fig.update_xaxes(range = [0, 40], row = i+1, col = j+1)
-                fig.update_yaxes(range = [0, 0.32], row = i+1, col = j+1)
-        fig.update_layout(height = 700)
-        fig.update_layout(titlefont = dict(size = 20), sliders = sliders)
-
-        figw = go.FigureWidget(fig)
-        display(figw)
-
 class Plottingmodule():
     def __init__(self, param = params, q0s = np.linspace(0,0.1,11).tolist(), qus = np.linspace(0, 0.2, 11).tolist(), ρs = [0.5, 1]):
+        # This class stores a set of model solutions for different parameter values in a dictionary that would be used interactive plot and figures in the paper
         self.params = {}
-        self.params['αŷ'] = params['αk']
-        self.params['αẑ'] = params['αz']
-        self.params['β̂'] = params['βk']
-        self.params['κ̂'] = params['βz']
-        self.params['σy'] = params['σy']
+        self.params['αk'] = params['αk']
+        self.params['αz'] = params['αz']
+        self.params['βk'] = params['βk']
+        self.params['βz'] = params['βz']
+        self.params['σk'] = params['σk']
         self.params['σz'] = params['σz']
         self.params['δ'] = params['δ']
 
@@ -1121,6 +754,7 @@ class Plottingmodule():
         self.x = np.hstack([x_neg, x_pos[1:]])
 
     def dumpdata(self):
+        # save data into a pickle object if it's the first run
         data = {}
         print(self.models)
         for q0s in self.q0s_list:
@@ -1149,15 +783,16 @@ class Plottingmodule():
                     pickle.dump(data, file_, -1)
  
     def driftIntPlot(self, q0s = None, qus = None):
+        # interactive plot for drift plots fixing q0s or qus at some value
         fig = go.Figure()
         base = None
-        if isinstance(q0s,  (int, float, np.float)): # plot along q0s
-            q_list = self.qᵤₛ_list
+        if isinstance(q0s,  (int, float, np.float)): # plot along qus by fixing q0s at some values
+            q_list = self.qᵤₛ_list[:-1]
             for qus in q_list:
                 model = self.models[q0s, qus, 1]
                 if base is None:
                     base = True
-                    fig.add_trace(go.Scatter(x = self.x  - params['z̄'], y = self.params['αẑ'] - self.params['κ̂'] * self.x  - self.params['z̄'],
+                    fig.add_trace(go.Scatter(x = self.x  - params['z̄'], y = self.params['αz'] - self.params['βz'] * self.x  - self.params['z̄'],
                         name = 'Baseline Model', 
                         line = dict(color = 'black', dash = 'solid', width = 3), showlegend = True))
                 if qus == q_list[int(0.3 * len(q_list))]:
@@ -1177,10 +812,7 @@ class Plottingmodule():
             
             steps = []
             for i in range(1, len(q_list) + 1):
-                if i == len(q_list):
-                    label = 'Worst Case'
-                else:
-                    label =  '{:.2f}'.format(q_list[i-1])
+                label =  '{:.2f}'.format(q_list[i-1])
                 step = dict(
                     method = 'restyle',
                     args = ['visible', [False] * len(fig.data)],
@@ -1201,7 +833,7 @@ class Plottingmodule():
                 model = self.models[q0s, qus, 1]
                 if base is None:
                     base = True
-                    fig.add_trace(go.Scatter(x = self.x  - params['z̄'], y = self.params['αẑ'] - self.params['κ̂'] * self.x  - self.params['z̄'],
+                    fig.add_trace(go.Scatter(x = self.x  - params['z̄'], y = self.params['αz'] - self.params['βz'] * self.x  - self.params['z̄'],
                         name = 'Baseline Model', 
                         line = dict(color = 'black', dash = 'solid', width = 3), showlegend = True))
                 if q0s == q_list[int(0.3 * len(q_list))]:
@@ -1250,6 +882,7 @@ class Plottingmodule():
         display(figw)
 
     def shocksIntPlot(self, q0s = None, qus = None):
+        # Interactive plots for shock price elasticities fixing q0s or qus at some value
         x = np.arange(0, 1000.1 ,0.1)
         x = x[:400]
         fig = make_subplots(rows = 2, cols = 3, print_grid = False, vertical_spacing = 0.08,
@@ -1359,18 +992,18 @@ class Plottingmodule():
         display(figw)
 
     def Figure2(self, q_list = np.linspace(0,0.15)):
-        
+        # generating Figure 2 as in the paper
         [κgrid, βgrid] = np.meshgrid(np.arange(0,0.5,0.001), np.arange(-3,3, 0.005))
         σinv = inv(self.params['σ'])
-        η1 = σinv[0,0] * (βgrid - self.params['β̂']) + σinv[0,1] * (self.params['κ̂'] - κgrid)
-        η2 = σinv[1,0] * (βgrid - self.params['β̂']) + σinv[1,1] * (self.params['κ̂'] - κgrid)
+        η1 = σinv[0,0] * (βgrid - self.params['βk']) + σinv[0,1] * (self.params['βz'] - κgrid)
+        η2 = σinv[1,0] * (βgrid - self.params['βk']) + σinv[1,1] * (self.params['βz'] - κgrid)
         data = []
         q_list = sorted(q_list)
         for q in q_list:
             if q == 0:
                 data.append([])
             else:
-                lhs = 0.5 * (η1 ** 2 + η2 ** 2) + (q ** 2 / norm(self.params['σz'] ** 2)) * (-self.params['κ̂'] + self.params['σz'][0] * η1 + self.params['σz'][1] * η2)
+                lhs = 0.5 * (η1 ** 2 + η2 ** 2) + (q ** 2 / norm(self.params['σz'] ** 2)) * (-self.params['βz'] + self.params['σz'][0] * η1 + self.params['σz'][1] * η2)
                 cs = plt.contour(κgrid, βgrid, lhs, levels = 0)
                 dta = cs.allsegs[1][0]
                 data.append([dta[:,0], dta[:,1]])
@@ -1435,7 +1068,8 @@ class Plottingmodule():
         
         fig.show()
 
-    def DriftComparison(self, q0s = [0.05, 0.1], ρs = 1, qus = [0.1, 0.2, np.Inf]): # 
+    def DriftComparison(self, q0s = [0.05, 0.1], ρs = 1, qus = [0.1, 0.2, np.Inf]):
+        # Generating Figure 3 and Figure 5 in the paper by fixing q0s or ρ
         if type(q0s) == list:  # plot against q
             titles = [r"$\sf q_{{s,0}}: {}$".format(q) for q in q0s]
             fig = make_subplots(rows = 1, cols = len(q0s), print_grid = False, subplot_titles = titles)
@@ -1456,7 +1090,7 @@ class Plottingmodule():
                                                 name = 'Worst Case Scenario', legendgroup = 'Worst Case Scenario', line = dict(color = 'red', dash = 'dot', width = 3), showlegend = True),
                             row = 1, col = i +1) 
                     fig.add_trace(
-                        go.Scatter(x = x - self.params['z̄'], y = self.params['αẑ'] - self.params['κ̂']* (x - self.params['z̄']), 
+                        go.Scatter(x = x - self.params['z̄'], y = self.params['αz'] - self.params['βz']* (x - self.params['z̄']), 
                                                 name = 'Baseline Model', legendgroup = 'Baseline Model', line = dict(color = 'black', dash = 'solid', width = 3), showlegend = True),
                             row = 1, col = i +1)
                 else:
@@ -1473,7 +1107,7 @@ class Plottingmodule():
                                                 name = 'Worst Case Scenario', legendgroup = 'Worst Case Scenario', line = dict(color = 'red', dash = 'dot', width = 3), showlegend = False),
                             row = 1, col = i +1) 
                     fig.add_trace(
-                        go.Scatter(x = x - self.params['z̄'], y = self.params['αẑ'] - self.params['κ̂']* (x - self.params['z̄']), 
+                        go.Scatter(x = x - self.params['z̄'], y = self.params['αz'] - self.params['βz']* (x - self.params['z̄']), 
                                                 name = 'Baseline Model', legendgroup = 'Baseline Model', line = dict(color = 'black', dash = 'solid', width = 3), showlegend = False),
                             row = 1, col = i +1)
             
@@ -1503,7 +1137,7 @@ class Plottingmodule():
                                                 name = 'Worst Case Scenario', legendgroup = 'Worst Case Scenario', line = dict(color = 'red', dash = 'dot', width = 3), showlegend = True),
                             row = 1, col = i +1) 
                     fig.add_trace(
-                        go.Scatter(x = x - self.params['z̄'], y = self.params['αẑ'] - self.params['κ̂']* (x - self.params['z̄']), 
+                        go.Scatter(x = x - self.params['z̄'], y = self.params['αz'] - self.params['βz']* (x - self.params['z̄']), 
                                                 name = 'Baseline Model', legendgroup = 'Baseline Model', line = dict(color = 'black', dash = 'solid', width = 3), showlegend = True),
                             row = 1, col = i +1)
                 else:
@@ -1520,7 +1154,7 @@ class Plottingmodule():
                                                 name = 'Worst Case Scenario', legendgroup = 'Worst Case Scenario', line = dict(color = 'red', dash = 'dot', width = 3), showlegend = False),
                             row = 1, col = i +1) 
                     fig.add_trace(
-                        go.Scatter(x = x - self.params['z̄'], y = self.params['αẑ'] - self.params['κ̂']* (x - self.params['z̄']), 
+                        go.Scatter(x = x - self.params['z̄'], y = self.params['αz'] - self.params['βz']* (x - self.params['z̄']), 
                                                 name = 'Baseline Model', legendgroup = 'Baseline Model', line = dict(color = 'black', dash = 'solid', width = 3), showlegend = False),
                             row = 1, col = i +1)
             fig.update_layout(title = r"$\text{Growth rate drift comparisions betweeen restricted and unrestricted } \rho_2$", titlefont = dict(size = 20))
@@ -1543,6 +1177,7 @@ class Plottingmodule():
         fig.show()
     
     def Figure6(self, q0s = [0.05, 0.1], qus = 0.2):
+        # Generating Figure 6 in the paper
         x = np.arange(0, 1000.1 ,0.1)
         x = x[:400]
         fig = make_subplots(rows = 2, cols = 2, print_grid = False, vertical_spacing = 0.08,
@@ -1580,6 +1215,7 @@ class Plottingmodule():
         fig.show()
 
     def Figure7(self, q0s = 0.1, qus = 0.2):
+        # Generating figure 7 in the paper
         x = np.arange(0, 1000.1 ,0.1)
         x = x[:400]
         fig = make_subplots(rows = 2, cols = 2, print_grid = False, vertical_spacing = 0.08,
@@ -1622,13 +1258,13 @@ class Plottingmodule():
 if __name__ == "__main__":
     print('-----------------------------------Starting-------------------------------------------')
     start_time = datetime.datetime.now()
-    # s = SturcturedModel(params, 0.2, 0)
+    # s = StructuredModel(params, 0.2, 0)
     # s.ApproxBound()
     # print("q0s = {}; qus = {}; rho2 = {}; bounds are {}, {}".format(s.q0s, s.qᵤₛ, s.ρ2, s.dvl, s.dvr))
-    # # err = s.CalibratingTheta(0.2, 1.0)
+    # # err = s.__CalibratingTheta(0.2, 1.0)
     # # print('The error is {}'.format(err))
     # s.solvetheta(None)
-    # # s.CalibratingTheta(0.9864243155699565, 1.0)
+    # # s.__CalibratingTheta(0.9864243155699565, 1.0)
     # print('θ = {}'.format(s.θ))
     # print('Solved: {}'.format(s.status))
     # s.HL(calHL = True)
