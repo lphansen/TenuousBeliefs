@@ -601,7 +601,7 @@ class TenuousModel():
         self.qus_list = sorted(qus)
         self.ρ_list = sorted(ρs)
         self.models = {}
-        
+
     def solve(self):
         for q0s in self.q0s_list:
             for qus in self.qus_list:
