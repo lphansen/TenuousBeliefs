@@ -878,8 +878,7 @@ class Plottingmodule():
         # fig.update_layout(legend = dict(orientation = 'h', y = 1.1))
         fig.update_xaxes(range = [-0.5, 0.5])
         fig.update_yaxes(range = [-0.025, 0.01])
-        figw = go.FigureWidget(fig)
-        display(figw)
+        fig.show()
 
     def shocksIntPlot(self, q0s = None, qus = None):
         # Interactive plots for shock price elasticities fixing q0s or qus at some value
@@ -988,8 +987,7 @@ class Plottingmodule():
         fig.update_layout(height = 700)
         fig.update_layout(titlefont = dict(size = 20), sliders = sliders)
 
-        figw = go.FigureWidget(fig)
-        display(figw)
+        fig.show()
 
     def Figure2(self, q_list = np.linspace(0,0.15)):
         # generating Figure 2 as in the paper
